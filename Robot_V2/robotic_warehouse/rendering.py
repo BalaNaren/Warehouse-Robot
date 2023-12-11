@@ -1,12 +1,8 @@
-"""
-2D rendering of the Robotic's Warehouse
-environment using pyglet
-"""
+
 
 import math
 import os
 import sys
-
 import numpy as np
 import math
 import six

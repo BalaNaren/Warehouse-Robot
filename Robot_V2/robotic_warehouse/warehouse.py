@@ -1,27 +1,18 @@
 import logging
-
 from collections import defaultdict, OrderedDict
 import gym
 from gym import spaces
-
-#from robotic_warehouse.utils import MultiAgentActionSpace, MultiAgentObservationSpace
-
 from enum import Enum
 import numpy as np
-
 from typing import List, Tuple, Optional, Dict
-
 import networkx as nx
 
 _AXIS_Z = 0
 _AXIS_Y = 1
 _AXIS_X = 2
-
 _COLLISION_LAYERS = 2
-
 _LAYER_AGENTS = 0
 _LAYER_SHELFS = 1
-
 
 class _VectorWriter:
     def __init__(self, size: int):
@@ -36,7 +27,6 @@ class _VectorWriter:
     def skip(self, bits):
         self.idx += bits
 
-
 class Action(Enum):
     NOOP = 0
     FORWARD = 1
@@ -44,19 +34,16 @@ class Action(Enum):
     RIGHT = 3
     TOGGLE_LOAD = 4
 
-
 class Direction(Enum):
     UP = 0
     DOWN = 1
     LEFT = 2
     RIGHT = 3
 
-
 class RewardType(Enum):
     GLOBAL = 0
     INDIVIDUAL = 1
     TWO_STAGE = 2
-
 
 class Entity:
     def __init__(self, id_: int, x: int, y: int):
@@ -65,7 +52,6 @@ class Entity:
         self.prev_y = None
         self.x = x
         self.y = y
-
 
 class Agent(Entity):
     counter = 0
@@ -112,7 +98,6 @@ class Agent(Entity):
         else:
             return self.dir
 
-
 class Shelf(Entity):
     counter = 0
 
@@ -123,7 +108,6 @@ class Shelf(Entity):
     @property
     def collision_layers(self):
         return (_LAYER_SHELFS,)
-
 
 class Warehouse(gym.Env):
 
@@ -143,37 +127,37 @@ class Warehouse(gym.Env):
         reward_type: RewardType,
         fast_obs=True,
     ):
-        """The robotic warehouse environment
+    """The robotic warehouse environment
 
-        Creates a grid world where multiple agents (robots)
-        are supposed to collect shelfs, bring them to a goal
-        and then return them.
-        .. note:
-            The grid looks like this:
+    Creates a grid world where multiple agents (robots)
+    are supposed to collect shelfs, bring them to a goal
+    and then return them.
+    .. note:
+        The grid looks like this:
 
-            shelf
-            columns
-                vv
-            ----------
-            -XX-XX-XX-        ^
-            -XX-XX-XX-  Column Height
-            -XX-XX-XX-        v
-            ----------
-            -XX----XX-   <\
-            -XX----XX-   <- Shelf Rows
-            -XX----XX-   </
-            ----------
-            ----GG----
+        shelf
+        columns
+            vv
+        ----------
+        -XX-XX-XX-        ^
+        -XX-XX-XX-  Column Height
+        -XX-XX-XX-        v
+        ----------
+        -XX----XX-   <\
+        -XX----XX-   <- Shelf Rows
+        -XX----XX-   </
+        ----------
+        ----GG----
 
-            G: is the goal positions where agents are rewarded if
-            they bring the correct shelfs.
+        G: is the goal positions where agents are rewarded if
+        they bring the correct shelfs.
 
-            The final grid size will be
-            height: (column_height + 1) * shelf_rows + 2
-            width: (2 + 1) * shelf_columns + 1
+        The final grid size will be
+        height: (column_height + 1) * shelf_rows + 2
+        width: (2 + 1) * shelf_columns + 1
 
-            The bottom-middle column will be removed to allow for
-            robot queuing next to the goal locations
+        The bottom-middle column will be removed to allow for
+        robot queuing next to the goal locations
 
         :param shelf_columns: Number of columns in the warehouse
         :type shelf_columns: int
@@ -595,28 +579,44 @@ class Warehouse(gym.Env):
         for x, y in self.goals:
             shelf_id = self.grid[_LAYER_SHELFS, y, x]
             if not shelf_id:
+                if self.reward_type == RewardType.GLOBAL:
+                    rewards -= 1
+                elif self.reward_type == RewardType.INDIVIDUAL:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    rewards[agent_id - 1] -= 1
+                elif self.reward_type == RewardType.TWO_STAGE:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    self.agents[agent_id - 1].has_delivered = True
+                    rewards[agent_id - 1] -= 0.5
                 continue
             shelf = self.shelfs[shelf_id - 1]
 
             if shelf not in self.request_queue:
+                if self.reward_type == RewardType.GLOBAL:
+                    rewards -= 1
+                elif self.reward_type == RewardType.INDIVIDUAL:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    rewards[agent_id - 1] -= 1
+                elif self.reward_type == RewardType.TWO_STAGE:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    self.agents[agent_id - 1].has_delivered = True
+                    rewards[agent_id - 1] -= 0.5
                 continue
-            # a shelf was successfully delived.
-            shelf_delivered = True
-            # remove from queue and replace it
-            new_request = np.random.choice(
-                list(set(self.shelfs) - set(self.request_queue))
-            )
-            self.request_queue[self.request_queue.index(shelf)] = new_request
-            # also reward the agents
-            if self.reward_type == RewardType.GLOBAL:
-                rewards += 1
-            elif self.reward_type == RewardType.INDIVIDUAL:
-                agent_id = self.grid[_LAYER_AGENTS, y, x]
-                rewards[agent_id - 1] += 1
-            elif self.reward_type == RewardType.TWO_STAGE:
-                agent_id = self.grid[_LAYER_AGENTS, y, x]
-                self.agents[agent_id - 1].has_delivered = True
-                rewards[agent_id - 1] += 0.5
+            else:
+                shelf_delivered = True
+                new_request = np.random.choice(
+                    list(set(self.shelfs) - set(self.request_queue))
+                )
+                self.request_queue[self.request_queue.index(shelf)] = new_request
+                if self.reward_type == RewardType.GLOBAL:
+                    rewards += 1
+                elif self.reward_type == RewardType.INDIVIDUAL:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    rewards[agent_id - 1] += 1
+                elif self.reward_type == RewardType.TWO_STAGE:
+                    agent_id = self.grid[_LAYER_AGENTS, y, x]
+                    self.agents[agent_id - 1].has_delivered = True
+                    rewards[agent_id - 1] += 0.5
 
         if shelf_delivered:
             self._cur_inactive_steps = 0
@@ -650,19 +650,21 @@ class Warehouse(gym.Env):
     def seed(self, seed=None):
         ...
 
-
 if __name__ == "__main__":
-    env = Warehouse(9, 8, 3, 10, 3, 1, 5, None, None, RewardType.GLOBAL)
-    env.reset()
-    import time
-    from tqdm import tqdm
+    shelf_rows=1
+    shelf_columns=3
+    n_agents=1
+    request_queue_size=int(n_agents*2)
+    reward_type= RewardType.GLOBAL
+    msg_bits=3
+    max_inactivity_steps=None
+    max_steps=500
+    sensor_range=1
+    column_height=8
 
-    #time.sleep(2)
-    env.render()
-    # env.step(18 * [Action.LOAD] + 2 * [Action.NOOP])
-
-    #for _ in tqdm(range(1000000)):
-    #    # time.sleep(2)
-    #    # env.render()
-    #    actions = env.action_space.sample()
-    #    env.step(actions)
+    env_wareHouse = Warehouse(shelf_columns, column_height, shelf_rows, n_agents, msg_bits, sensor_range, request_queue_size, max_inactivity_steps, max_steps, reward_type)
+    env_wareHouse.reset()
+    for _ in range(100000):
+        actions = env_wareHouse.action_space.sample()
+        new_obs, rewards, dones, info, delivered=env_wareHouse.step(actions)
+        print(rewards) 
