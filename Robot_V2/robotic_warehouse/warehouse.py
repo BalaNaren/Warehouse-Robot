@@ -127,58 +127,6 @@ class Warehouse(gym.Env):
         reward_type: RewardType,
         fast_obs=True,
     ):
-    """The robotic warehouse environment
-
-    Creates a grid world where multiple agents (robots)
-    are supposed to collect shelfs, bring them to a goal
-    and then return them.
-    .. note:
-        The grid looks like this:
-
-        shelf
-        columns
-            vv
-        ----------
-        -XX-XX-XX-        ^
-        -XX-XX-XX-  Column Height
-        -XX-XX-XX-        v
-        ----------
-        -XX----XX-   <\
-        -XX----XX-   <- Shelf Rows
-        -XX----XX-   </
-        ----------
-        ----GG----
-
-        G: is the goal positions where agents are rewarded if
-        they bring the correct shelfs.
-
-        The final grid size will be
-        height: (column_height + 1) * shelf_rows + 2
-        width: (2 + 1) * shelf_columns + 1
-
-        The bottom-middle column will be removed to allow for
-        robot queuing next to the goal locations
-
-        :param shelf_columns: Number of columns in the warehouse
-        :type shelf_columns: int
-        :param column_height: Column height in the warehouse
-        :type column_height: int
-        :param shelf_rows: Number of columns in the warehouse
-        :type shelf_rows: int
-        :param n_agents: Number of spawned and controlled agents
-        :type n_agents: int
-        :param msg_bits: Number of communication bits for each agent
-        :type msg_bits: int
-        :param sensor_range: Range of each agents observation
-        :type sensor_range: int
-        :param request_queue_size: How many shelfs are simultaneously requested
-        :type request_queue_size: int
-        :param max_inactivity: Number of steps without a delivered shelf until environment finishes
-        :type max_inactivity: Optional[int]
-        :param reward_type: Specifies if agents are rewarded individually or globally
-        :type reward_type: RewardType
-        """
-
         assert shelf_columns % 2 == 1, "Only odd number of shelf columns is supported"
 
         self.grid_size = (
