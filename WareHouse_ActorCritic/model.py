@@ -14,32 +14,21 @@ class Flatten(nn.Module):
 
 class FCNetwork(nn.Module):
     def __init__(self, dims, out_layer=None):
-        """
-        Creates a network using ReLUs between layers and no activation at the end
-        :param dims: tuple in the form of (100, 100, ..., 5). for dim sizes
-        """
         super().__init__()
         input_size = dims[0]
         h_sizes = dims[1:]
-
         mods = [nn.Linear(input_size, h_sizes[0])]
         for i in range(len(h_sizes) - 1):
             mods.append(nn.ReLU())
             mods.append(nn.Linear(h_sizes[i], h_sizes[i + 1]))
-
         if out_layer:
             mods.append(out_layer)
-
         self.layers = nn.Sequential(*mods)
-
     def forward(self, x):
-        # Feedforward
         return self.layers(x)
-
     def hard_update(self, source):
         for target_param, source_param in zip(self.parameters(), source.parameters()):
             target_param.data.copy_(source_param.data)
-
     def soft_update(self, source, t):
         for target_param, source_param in zip(self.parameters(), source.parameters()):
             target_param.data.copy_((1 - t) * target_param.data + t * source_param.data)
@@ -48,14 +37,10 @@ class FCNetwork(nn.Module):
 class Policy(nn.Module):
     def __init__(self, obs_space, action_space, base=None, base_kwargs=None):
         super(Policy, self).__init__()
-
         obs_shape = obs_space.shape
-
         if base_kwargs is None:
             base_kwargs = {}
-
         self.base = MLPBase(obs_shape[0], **base_kwargs)
-
         num_outputs = action_space.n
         self.dist = Categorical(self.base.output_size, num_outputs)
 
@@ -134,35 +119,24 @@ class NNBase(nn.Module):
             x = x.squeeze(0)
             hxs = hxs.squeeze(0)
         else:
-            # x is a (T, N, -1) tensor that has been flatten to (T * N, -1)
             N = hxs.size(0)
             T = int(x.size(0) / N)
 
-            # unflatten
             x = x.view(T, N, x.size(1))
 
-            # Same deal with masks
             masks = masks.view(T, N)
-
-            # Let's figure out which steps in the sequence have a zero for any agent
-            # We will always assume t=0 has a zero in it as that makes the logic cleaner
             has_zeros = (masks[1:] == 0.0).any(dim=-1).nonzero().squeeze().cpu()
 
-            # +1 to correct the masks[1:]
             if has_zeros.dim() == 0:
-                # Deal with scalar
                 has_zeros = [has_zeros.item() + 1]
             else:
                 has_zeros = (has_zeros + 1).numpy().tolist()
 
-            # add t=0 and t=T to the list
             has_zeros = [0] + has_zeros + [T]
 
             hxs = hxs.unsqueeze(0)
             outputs = []
             for i in range(len(has_zeros) - 1):
-                # We can now process steps that don't have any zeros in masks together!
-                # This is much faster
                 start_idx = has_zeros[i]
                 end_idx = has_zeros[i + 1]
 
@@ -172,10 +146,7 @@ class NNBase(nn.Module):
 
                 outputs.append(rnn_scores)
 
-            # assert len(outputs) == T
-            # x is a (T, N, -1) tensor
             x = torch.cat(outputs, dim=0)
-            # flatten
             x = x.view(T * N, -1)
             hxs = hxs.squeeze(0)
 

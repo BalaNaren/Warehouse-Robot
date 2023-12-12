@@ -1,9 +1,6 @@
 import torch
-import robotic_warehouse
-import lbforaging
 import gym
 
-from wrappers import RecordEpisodeStatistics, TimeLimit
 
 path = "pretrained/rware-small-4ag"
 env_name = "rware-small-4ag-v1"
@@ -12,8 +9,6 @@ time_limit = 500 # 25 for LBF
 RUN_STEPS = 1500
 
 env = gym.make(env_name)
-env = TimeLimit(env, time_limit)
-env = RecordEpisodeStatistics(env)
 
 agents = []
 

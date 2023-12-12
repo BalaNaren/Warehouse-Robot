@@ -6,9 +6,7 @@ import torch.nn.functional as F
 
 from utils import init
 
-"""
-Modify standard PyTorch distributions so they are compatible with this code.
-"""
+
 # Categorical
 class FixedCategorical(torch.distributions.Categorical):
     def sample(self):

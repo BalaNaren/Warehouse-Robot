@@ -11,15 +11,11 @@ import numpy as np
 import torch
 from sacred import Experiment
 from sacred.observers import (
-    FileStorageObserver,
-    MongoObserver,
-    QueuedMongoObserver,
-    QueueObserver,
+    FileStorageObserver
 )
 from torch.utils.tensorboard import SummaryWriter
 
 import utils
-from wrappers import RecordEpisodeStatistics, SquashDones
 from model import Policy
 
 from robotic_warehouse.warehouse import Warehouse
