@@ -125,7 +125,6 @@ class Warehouse(gym.Env):
         max_inactivity_steps: Optional[int],
         max_steps: Optional[int],
         reward_type: RewardType,
-        fast_obs=True,
     ):
         assert shelf_columns % 2 == 1, "Only odd number of shelf columns is supported"
 
@@ -177,89 +176,6 @@ class Warehouse(gym.Env):
             + self._obs_sensor_locations * self._obs_bits_per_shelf
         )
 
-        # default values:
-        self.fast_obs = None
-        self.observation_space = None
-        self._use_slow_obs()
-
-        # for performance reasons we
-        # can flatten the obs vector
-        if fast_obs:
-            self._use_fast_obs()
-
-        self.renderer = None
-
-    def _use_slow_obs(self):
-        self.fast_obs = False
-        self.observation_space = spaces.Tuple(
-            tuple(
-                [
-                    spaces.Dict(
-                        OrderedDict(
-                            {
-                                "self": spaces.Dict(
-                                    OrderedDict(
-                                        {
-                                            "location": spaces.MultiDiscrete(
-                                                [self.grid_size[1], self.grid_size[0]]
-                                            ),
-                                            "carrying_shelf": spaces.MultiDiscrete([2]),
-                                            "direction": spaces.Discrete(4),
-                                            "on_highway": spaces.MultiDiscrete([2]),
-                                        }
-                                    )
-                                ),
-                                "sensors": spaces.Tuple(
-                                    self._obs_sensor_locations
-                                    * (
-                                        spaces.Dict(
-                                            OrderedDict(
-                                                {
-                                                    "has_agent": spaces.MultiDiscrete(
-                                                        [2]
-                                                    ),
-                                                    "direction": spaces.Discrete(4),
-                                                    "local_message": spaces.MultiBinary(
-                                                        self.msg_bits
-                                                    ),
-                                                    "has_shelf": spaces.MultiDiscrete(
-                                                        [2]
-                                                    ),
-                                                    "shelf_requested": spaces.MultiDiscrete(
-                                                        [2]
-                                                    ),
-                                                }
-                                            )
-                                        ),
-                                    )
-                                ),
-                            }
-                        )
-                    )
-                    for _ in range(self.n_agents)
-                ]
-            )
-        )
-
-    def _use_fast_obs(self):
-        if self.fast_obs:
-            return
-
-        self.fast_obs = True
-        ma_spaces = []
-        for sa_obs in self.observation_space:
-            flatdim = spaces.flatdim(sa_obs)
-            ma_spaces += [
-                spaces.Box(
-                    low=-float("inf"),
-                    high=float("inf"),
-                    shape=(flatdim,),
-                    dtype=np.float32,
-                )
-            ]
-
-        self.observation_space = spaces.Tuple(tuple(ma_spaces))
-
     def _is_highway(self, x: int, y: int) -> bool:
         return (
             (x % 3 == 0)  # vertical highways
@@ -305,36 +221,6 @@ class Warehouse(gym.Env):
 
         agents = padded_agents[min_y:max_y, min_x:max_x].reshape(-1)
         shelfs = padded_shelfs[min_y:max_y, min_x:max_x].reshape(-1)
-
-        if self.fast_obs:
-            obs = _VectorWriter(self.observation_space[agent.id - 1].shape[0])
-
-            obs.write([agent.x, agent.y, int(agent.carrying_shelf is not None)])
-            direction = np.zeros(4)
-            direction[agent.dir.value] = 1.0
-            obs.write(direction)
-            obs.write([int(self._is_highway(agent.x, agent.y))])
-
-            for i, (id_agent, id_shelf) in enumerate(zip(agents, shelfs)):
-                if id_agent == 0:
-                    obs.skip(1)
-                    obs.write([1.0])
-                    obs.skip(3 + self.msg_bits)
-                else:
-                    obs.write([1.0])
-                    direction = np.zeros(4)
-                    direction[self.agents[id_agent - 1].dir.value] = 1.0
-                    obs.write(direction)
-                    if self.msg_bits > 0:
-                        obs.write(self.agents[id_agent - 1].message)
-                if id_shelf == 0:
-                    obs.skip(2)
-                else:
-                    obs.write(
-                        [1.0, int(self.shelfs[id_shelf - 1] in self.request_queue)]
-                    )
-
-            return obs.vector
 
         # --- self data
         obs = {}
