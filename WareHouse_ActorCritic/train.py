@@ -10,7 +10,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from sacred import Experiment
-from sacred.observers import (  # noqa
+from sacred.observers import (
     FileStorageObserver,
     MongoObserver,
     QueuedMongoObserver,
@@ -19,13 +19,10 @@ from sacred.observers import (  # noqa
 from torch.utils.tensorboard import SummaryWriter
 
 import utils
-from a2c import A2C, algorithm
-from envs import make_vec_envs
 from wrappers import RecordEpisodeStatistics, SquashDones
 from model import Policy
 
-import robotic_warehouse # noqa
-import lbforaging # noqa
+from robotic_warehouse.warehouse import Warehouse
 
 ex = Experiment(ingredients=[algorithm])
 ex.captured_out_filter = lambda captured_output: "Output capturing turned off."
@@ -77,29 +74,24 @@ def _squash_info(info):
 
 @ex.capture
 def evaluate(
+    shelf_columns,
+    column_height,
+    shelf_rows,
+    n_agents,
+    msg_bits,
+    sensor_range,
+    request_queue_size,
+    max_inactivity_steps,
+    max_steps,
+    reward_type,
     agents,
-    monitor_dir,
     episodes_per_eval,
-    env_name,
-    seed,
-    wrappers,
-    dummy_vecenv,
-    time_limit,
     algorithm,
     _log,
 ):
     device = algorithm["device"]
 
-    eval_envs = make_vec_envs(
-        env_name,
-        seed,
-        dummy_vecenv,
-        episodes_per_eval,
-        time_limit,
-        wrappers,
-        device,
-        monitor_dir=monitor_dir,
-    )
+    eval_envs = Warehouse(shelf_columns, column_height, shelf_rows, n_agents, msg_bits, sensor_range, request_queue_size, max_inactivity_steps, max_steps, reward_type)
 
     n_obs = eval_envs.reset()
     n_recurrent_hidden_states = [
@@ -144,15 +136,20 @@ def evaluate(
 
 @ex.automain
 def main(
+    shelf_columns,
+    column_height,
+    shelf_rows,
+    n_agents,
+    msg_bits,
+    sensor_range,
+    request_queue_size,
+    max_inactivity_steps,
+    max_steps,
+    reward_type,
     _run,
     _log,
     num_env_steps,
-    env_name,
-    seed,
     algorithm,
-    dummy_vecenv,
-    time_limit,
-    wrappers,
     save_dir,
     eval_dir,
     loss_dir,
@@ -175,20 +172,9 @@ def main(
     utils.cleanup_log_dir(save_dir)
 
     torch.set_num_threads(1)
-    envs = make_vec_envs(
-        env_name,
-        seed,
-        dummy_vecenv,
-        algorithm["num_processes"],
-        time_limit,
-        wrappers,
-        algorithm["device"],
-    )
+    envs = Warehouse(shelf_columns, column_height, shelf_rows, n_agents, msg_bits, sensor_range, request_queue_size, max_inactivity_steps, max_steps, reward_type)
 
-    agents = [
-        A2C(i, osp, asp)
-        for i, (osp, asp) in enumerate(zip(envs.observation_space, envs.action_space))
-    ]
+    agents=[]
     obs = envs.reset()
 
     for i in range(len(obs)):
@@ -219,7 +205,6 @@ def main(
                 )
             # Obser reward and next obs
             obs, reward, done, infos = envs.step(n_action)
-            # envs.envs[0].render()
 
             # If done then clean the history of observations.
             masks = torch.FloatTensor([[0.0] if done_ else [1.0] for done_ in done])

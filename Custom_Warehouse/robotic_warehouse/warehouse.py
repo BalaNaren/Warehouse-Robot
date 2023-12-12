@@ -584,13 +584,6 @@ class Warehouse(gym.Env):
         info = {}
         return new_obs, list(rewards), dones, info, shelf_delivered
 
-    def render(self, mode="human"):
-        if not self.renderer:
-            from robotic_warehouse.rendering import Viewer
-
-            self.renderer = Viewer(self.grid_size)
-        return self.renderer.render(self, return_rgb_array=mode == "rgb_array")
-
     def close(self):
         if self.renderer:
             self.renderer.close()

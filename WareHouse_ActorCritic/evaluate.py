@@ -3,7 +3,6 @@ import robotic_warehouse
 import lbforaging
 import gym
 
-from a2c import A2C
 from wrappers import RecordEpisodeStatistics, TimeLimit
 
 path = "pretrained/rware-small-4ag"
@@ -16,10 +15,7 @@ env = gym.make(env_name)
 env = TimeLimit(env, time_limit)
 env = RecordEpisodeStatistics(env)
 
-agents = [
-    A2C(i, osp, asp, 0.1, 0.1, False, 1, 1, "cpu")
-    for i, (osp, asp) in enumerate(zip(env.observation_space, env.action_space))
-]
+agents = []
 
 for agent in agents:
     agent.restore(path + f"/agent{agent.agent_id}")
