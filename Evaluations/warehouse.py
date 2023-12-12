@@ -14,18 +14,6 @@ _COLLISION_LAYERS = 2
 _LAYER_AGENTS = 0
 _LAYER_SHELFS = 1
 
-class _VectorWriter:
-    def __init__(self, size: int):
-        self.vector = np.zeros(size, dtype=np.float32)
-        self.idx = 0
-
-    def write(self, data):
-        data_size = len(data)
-        self.vector[self.idx : self.idx + data_size] = data
-        self.idx += data_size
-
-    def skip(self, bits):
-        self.idx += bits
 
 class Action(Enum):
     NOOP = 0
@@ -34,16 +22,19 @@ class Action(Enum):
     RIGHT = 3
     TOGGLE_LOAD = 4
 
+
 class Direction(Enum):
     UP = 0
     DOWN = 1
     LEFT = 2
     RIGHT = 3
 
+
 class RewardType(Enum):
     GLOBAL = 0
     INDIVIDUAL = 1
     TWO_STAGE = 2
+
 
 class Entity:
     def __init__(self, id_: int, x: int, y: int):
@@ -52,6 +43,7 @@ class Entity:
         self.prev_y = None
         self.x = x
         self.y = y
+
 
 class Agent(Entity):
     counter = 0
@@ -98,6 +90,7 @@ class Agent(Entity):
         else:
             return self.dir
 
+
 class Shelf(Entity):
     counter = 0
 
@@ -108,6 +101,7 @@ class Shelf(Entity):
     @property
     def collision_layers(self):
         return (_LAYER_SHELFS,)
+
 
 class Warehouse(gym.Env):
 
@@ -178,10 +172,10 @@ class Warehouse(gym.Env):
 
     def _is_highway(self, x: int, y: int) -> bool:
         return (
-            (x % 3 == 0)  # vertical highways
-            or (y % 9 == 0)  # horizontal highways
-            or (y == self.grid_size[0] - 1)  # delivery row
-            or (  # remove a box for queuing
+            (x % 3 == 0)
+            or (y % 9 == 0)
+            or (y == self.grid_size[0] - 1)
+            or (
                 (y > self.grid_size[0] - 11)
                 and ((x == self.grid_size[1] // 2 - 1) or (x == self.grid_size[1] // 2))
             )
@@ -196,7 +190,6 @@ class Warehouse(gym.Env):
 
         min_y = agent.y - self.sensor_range
         max_y = agent.y + self.sensor_range + 1
-        # sensors
         if (
             (min_x < 0)
             or (min_y < 0)
@@ -209,7 +202,6 @@ class Warehouse(gym.Env):
             padded_shelfs = np.pad(
                 self.grid[_LAYER_SHELFS], self.sensor_range, mode="constant"
             )
-            # + self.sensor_range due to padding
             min_x += self.sensor_range
             max_x += self.sensor_range
             min_y += self.sensor_range
@@ -218,11 +210,8 @@ class Warehouse(gym.Env):
         else:
             padded_agents = self.grid[_LAYER_AGENTS]
             padded_shelfs = self.grid[_LAYER_SHELFS]
-
         agents = padded_agents[min_y:max_y, min_x:max_x].reshape(-1)
         shelfs = padded_shelfs[min_y:max_y, min_x:max_x].reshape(-1)
-
-        # --- self data
         obs = {}
         obs["self"] = {
             "location": np.array([agent.x, agent.y]),
@@ -230,10 +219,7 @@ class Warehouse(gym.Env):
             "direction": agent.dir.value,
             "on_highway": [int(self._is_highway(agent.x, agent.y))],
         }
-        # --- sensor data
         obs["sensors"] = tuple({} for _ in range(self._obs_sensor_locations))
-
-        # find neighboring agents
         for i, id_ in enumerate(agents):
             if id_ == 0:
                 obs["sensors"][i]["has_agent"] = [0]
@@ -243,8 +229,6 @@ class Warehouse(gym.Env):
                 obs["sensors"][i]["has_agent"] = [1]
                 obs["sensors"][i]["direction"] = self.agents[id_ - 1].dir.value
                 obs["sensors"][i]["local_message"] = self.agents[id_ - 1].message
-
-        # find neighboring shelfs:
         for i, id_ in enumerate(shelfs):
             if id_ == 0:
                 obs["sensors"][i]["has_shelf"] = [0]
@@ -254,14 +238,12 @@ class Warehouse(gym.Env):
                 obs["sensors"][i]["shelf_requested"] = [
                     int(self.shelfs[id_ - 1] in self.request_queue)
                 ]
-
         return obs
 
     def _recalc_grid(self):
         self.grid[:] = 0
         for s in self.shelfs:
             self.grid[_LAYER_SHELFS, s.y, s.x] = s.id
-
         for a in self.agents:
             self.grid[_LAYER_AGENTS, a.y, a.x] = a.id
 
@@ -270,11 +252,6 @@ class Warehouse(gym.Env):
         Agent.counter = 0
         self._cur_inactive_steps = 0
         self._cur_steps = 0
-
-        # n_xshelf = (self.grid_size[1] - 1) // 3
-        # n_yshelf = (self.grid_size[0] - 2) // 9
-
-        # make the shelfs
         self.shelfs = [
             Shelf(x, y)
             for y, x in zip(
@@ -283,8 +260,6 @@ class Warehouse(gym.Env):
             )
             if not self._is_highway(x, y)
         ]
-
-        # spawn agents at random locations
         agent_locs = np.random.choice(
             np.arange(self.grid_size[0] * self.grid_size[1]),
             size=self.n_agents,
@@ -297,17 +272,11 @@ class Warehouse(gym.Env):
             Agent(x, y, dir_, self.msg_bits)
             for y, x, dir_ in zip(*agent_locs, agent_dirs)
         ]
-
         self._recalc_grid()
-
         self.request_queue = list(
             np.random.choice(self.shelfs, size=self.request_queue_size, replace=False)
         )
-
         return tuple([self._make_obs(agent) for agent in self.agents])
-        # for s in self.shelfs:
-        #     self.grid[0, s.y, s.x] = 1
-        # print(self.grid[0])
 
     def step(
         self, actions: List[Action]
@@ -320,16 +289,8 @@ class Warehouse(gym.Env):
                 agent.message[:] = action[1:]
             else:
                 agent.req_action = Action(action)
-
-        # # stationary agents will certainly stay where they are
-        # stationary_agents = [agent for agent in self.agents if agent.action != Action.FORWARD]
-
-        # # forward agents will move only if they avoid collisions
-        # forward_agents = [agent for agent in self.agents if agent.action == Action.FORWARD]
         commited_agents = set()
-
         G = nx.DiGraph()
-
         for agent in self.agents:
             start = agent.x, agent.y
             target = agent.req_location(self.grid_size)
@@ -345,9 +306,6 @@ class Warehouse(gym.Env):
                     ].carrying_shelf
                 )
             ):
-                # there's a standing shelf at the target location
-                # our agent is carrying a shelf so there's no way
-                # this movement can succeed. Cancel it.
                 agent.req_action = Action.NOOP
                 G.add_edge(start, start)
             else:
@@ -357,12 +315,8 @@ class Warehouse(gym.Env):
 
         for comp in wcomps:
             try:
-                # if we find a cycle in this component we have to
-                # commit all nodes in that cycle, and nothing else
                 cycle = nx.algorithms.find_cycle(comp)
                 if len(cycle) == 2:
-                    # we have a situation like this: [A] <-> [B]
-                    # which is physically impossible. so skip
                     continue
                 for edge in cycle:
                     start_node = edge[0]
@@ -370,25 +324,19 @@ class Warehouse(gym.Env):
                     if agent_id > 0:
                         commited_agents.add(agent_id)
             except nx.NetworkXNoCycle:
-
                 longest_path = nx.algorithms.dag_longest_path(comp)
                 for x, y in longest_path:
                     agent_id = self.grid[_LAYER_AGENTS, y, x]
                     if agent_id:
                         commited_agents.add(agent_id)
-
         commited_agents = set([self.agents[id_ - 1] for id_ in commited_agents])
         failed_agents = set(self.agents) - commited_agents
-
         for agent in failed_agents:
             assert agent.req_action == Action.FORWARD
             agent.req_action = Action.NOOP
-
         rewards = np.zeros(self.n_agents)
-
         for agent in self.agents:
             agent.prev_x, agent.prev_y = agent.x, agent.y
-
             if agent.req_action == Action.FORWARD:
                 agent.x, agent.y = agent.req_location(self.grid_size)
                 if agent.carrying_shelf:
@@ -404,11 +352,8 @@ class Warehouse(gym.Env):
                     agent.carrying_shelf = None
                     if agent.has_delivered and self.reward_type == RewardType.TWO_STAGE:
                         rewards[agent.id - 1] += 0.5
-
                     agent.has_delivered = False
-
         self._recalc_grid()
-
         shelf_delivered = False
         for x, y in self.goals:
             shelf_id = self.grid[_LAYER_SHELFS, y, x]
@@ -465,7 +410,6 @@ class Warehouse(gym.Env):
             dones = self.n_agents * [True]
         else:
             dones = self.n_agents * [False]
-
         new_obs = tuple([self._make_obs(agent) for agent in self.agents])
         info = {}
         return new_obs, list(rewards), dones, info, shelf_delivered
@@ -474,24 +418,33 @@ class Warehouse(gym.Env):
         if self.renderer:
             self.renderer.close()
 
-    def seed(self, seed=None):
-        ...
 
 if __name__ == "__main__":
-    shelf_rows=1
-    shelf_columns=3
-    n_agents=1
-    request_queue_size=int(n_agents*2)
-    reward_type= RewardType.GLOBAL
-    msg_bits=3
-    max_inactivity_steps=None
-    max_steps=500
-    sensor_range=1
-    column_height=8
+    shelf_rows = 1
+    shelf_columns = 3
+    n_agents = 1
+    request_queue_size = int(n_agents * 2)
+    reward_type = RewardType.GLOBAL
+    msg_bits = 3
+    max_inactivity_steps = None
+    max_steps = 500
+    sensor_range = 1
+    column_height = 8
 
-    env_wareHouse = Warehouse(shelf_columns, column_height, shelf_rows, n_agents, msg_bits, sensor_range, request_queue_size, max_inactivity_steps, max_steps, reward_type)
+    env_wareHouse = Warehouse(
+        shelf_columns,
+        column_height,
+        shelf_rows,
+        n_agents,
+        msg_bits,
+        sensor_range,
+        request_queue_size,
+        max_inactivity_steps,
+        max_steps,
+        reward_type,
+    )
     env_wareHouse.reset()
     for _ in range(100000):
         actions = env_wareHouse.action_space.sample()
-        new_obs, rewards, dones, info, delivered=env_wareHouse.step(actions)
-        print(rewards) 
+        new_obs, rewards, dones, info, delivered = env_wareHouse.step(actions)
+        print(rewards)
